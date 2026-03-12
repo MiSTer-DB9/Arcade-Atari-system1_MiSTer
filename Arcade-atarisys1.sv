@@ -175,8 +175,13 @@ module emu
 	// 1 - D-/TX
 	// 2..6 - USR2..USR6
 	// Set USER_OUT to 1 to read from USER_IN.
-	input   [6:0] USER_IN,
-	output  [6:0] USER_OUT,
+	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+	input   [7:0] USER_IN,
+	output  [7:0] USER_OUT,
+
+	output        USER_OSD,
+	output  [1:0] USER_MODE,
+	// [MiSTer-DB9 END]
 
 	input         OSD_STATUS
 );
@@ -184,7 +189,7 @@ module emu
 ///////// Default values for ports not used in this core /////////
 
 assign ADC_BUS  = 'Z;
-assign USER_OUT = '1;
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: assign USER_OUT = '1; removed
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
@@ -227,9 +232,55 @@ assign LED_DISK = 0;
 assign LED_POWER = 0;
 assign BUTTONS = 0;
 
-wire [31:0] joystick_0;
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+wire [31:0] joystick_0_USB;
 wire [15:0] joystick_l_analog_0;
 wire [15:0] joystick_r_analog_0;
+
+wire [31:0] joystick_0 = joydb_1ena ? (OSD_STATUS ? 32'b0 : {22'b0, joydb_1[10], joydb_1[11], joydb_1[7:0]}) : joystick_0_USB;
+
+// Boilerplate block
+wire         CLK_JOY = CLK_50M;         //Assign clock between 40-50Mhz
+wire   [2:0] JOY_FLAG  = {status[126],status[127],status[125]};
+wire         JOY_CLK, JOY_LOAD, JOY_SPLIT, JOY_MDSEL;
+wire   [5:0] JOY_MDIN  = JOY_FLAG[2] ? {USER_IN[6],USER_IN[3],USER_IN[5],USER_IN[7],USER_IN[1],USER_IN[2]} : '1;
+wire         JOY_DATA  = JOY_FLAG[1] ? USER_IN[5] : '1;
+assign       USER_MODE = JOY_FLAG[2:1] ;
+assign       USER_OSD  = joydb_1[10] & joydb_1[6];  // Start+C opens OSD
+
+// Active controller type:  JOY_FLAG[2]=DB9MD, JOY_FLAG[1]=DB15, JOY_FLAG[0]=2Players
+assign USER_OUT = JOY_FLAG[2] ? {3'b111,JOY_SPLIT,3'b111,JOY_MDSEL}
+                : JOY_FLAG[1] ? {6'b111111,JOY_CLK,JOY_LOAD}
+                : '1;
+
+// Unified joystick signals from DB controllers
+wire [15:0] joydb_1 = JOY_FLAG[2] ? JOYDB9MD_1 : JOY_FLAG[1] ? JOYDB15_1 : '0;
+wire [15:0] joydb_2 = JOY_FLAG[2] ? JOYDB9MD_2 : JOY_FLAG[1] ? JOYDB15_2 : '0;
+wire        joydb_1ena = |JOY_FLAG[2:1]              ;
+wire        joydb_2ena = |JOY_FLAG[2:1] & JOY_FLAG[0];
+
+reg [15:0] JOYDB9MD_1,JOYDB9MD_2;
+joy_db9md joy_db9md
+(
+  .clk       ( CLK_JOY    ), //40-50MHz
+  .joy_split ( JOY_SPLIT  ),
+  .joy_mdsel ( JOY_MDSEL  ),
+  .joy_in    ( JOY_MDIN   ),
+  .joystick1 ( JOYDB9MD_1 ),
+  .joystick2 ( JOYDB9MD_2 )
+);
+
+reg [15:0] JOYDB15_1,JOYDB15_2;
+joy_db15 joy_db15
+(
+  .clk       ( CLK_JOY   ), //48MHz
+  .JOY_CLK   ( JOY_CLK   ),
+  .JOY_DATA  ( JOY_DATA  ),
+  .JOY_LOAD  ( JOY_LOAD  ),
+  .joystick1 ( JOYDB15_1 ),
+  .joystick2 ( JOYDB15_2 )
+);
+// [MiSTer-DB9 END]
 
 wire [10:0] ps2_key;
 wire [24:0]	ps2_mouse;
@@ -262,6 +313,10 @@ localparam CONF_STR = {
 	"A.ATARISYS1;;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+	"O[127:126],UserIO Joystick,Off,DB9MD,DB15;",
+	"O[125],UserIO Players, 1 Player,2 Players;",
+	// [MiSTer-DB9 END]
 	"O[5:3],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"-;",
 	"O[6],Service,Off,On;",
@@ -456,7 +511,10 @@ assign sl_wr_ep1     = (ioctl_wr && !ioctl_index && ioctl_download && ioctl_addr
 		.ioctl_index(ioctl_index),
 		.ioctl_wait(ioctl_wait),
 
-		.joystick_0(joystick_0),
+		.joystick_0(joystick_0_USB), // [MiSTer-DB9] renamed for DB9/SNAC8 mux
+		// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+		.joy_raw(OSD_STATUS ? ({USER_MODE, joydb_1[11:0] | joydb_2[11:0]}) : 14'b0),
+		// [MiSTer-DB9 END]
 		.joystick_l_analog_0(joystick_l_analog_0),
 		.joystick_r_analog_0(joystick_r_analog_0),
 		.ps2_mouse(ps2_mouse),
