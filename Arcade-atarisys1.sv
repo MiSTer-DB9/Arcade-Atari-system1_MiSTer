@@ -242,7 +242,7 @@ wire [31:0] joystick_0_USB;
 wire [15:0] joystick_l_analog_0;
 wire [15:0] joystick_r_analog_0;
 
-wire [31:0] joystick_0 = joydb_1ena ? (OSD_STATUS ? 32'b0 : {22'b0, joydb_1[10], joydb_1[11], joydb_1[7:0]}) : joystick_0_USB;
+wire [31:0] joystick_0 = joydb_1ena ? (OSD_STATUS ? 32'b0 : joydb_1_mapped[9:0]) : joystick_0_USB;
 
 // Boilerplate block
 // [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: joydb wrapper
