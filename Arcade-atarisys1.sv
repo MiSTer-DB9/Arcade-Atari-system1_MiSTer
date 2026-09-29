@@ -561,7 +561,7 @@ assign sl_wr_ep1     = (ioctl_wr && !ioctl_index && ioctl_download && ioctl_addr
 		.joystick_0(joystick_0_USB), // [MiSTer-DB9] renamed for DB9/SNAC8 mux
 		// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
 		// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: joy_raw
-		.joy_raw(OSD_STATUS ? joy_raw_payload : 16'b0),
+		.joy_raw(joy_raw_payload),
 		// programmable remap matrix selector load (UIO_DB9_MAP 0xFD)
 		.db9_remap_cmd(db9_remap_cmd),
 		.db9_remap_byte_cnt(db9_remap_byte_cnt),
